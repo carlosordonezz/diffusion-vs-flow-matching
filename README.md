@@ -12,9 +12,11 @@
 
 ## TL;DR
 
-With the same network and training budget, **Flow Matching beats DDIM at every number of sampling steps**,
-and the gap is largest when few steps are used (**~3-4x lower error at 5 steps**).
-With 20 steps it is **42x faster** than standard DDPM sampling (1000 steps), at comparable quality.
+With the same network and training budget (results over 3 seeds):
+
+- **With few sampling steps, Flow Matching is clearly better than DDIM**: ~4x lower error at 5 steps and ~2-3x at 10 steps, on all three datasets.
+- **With many steps (≥ 50), Flow Matching, DDIM and full DDPM (1000 steps) are statistically indistinguishable.**
+- So the advantage of Flow Matching is **efficiency**: e.g. with 20 steps it is **42x faster** than DDPM sampling, at comparable quality on moons and spirals.
 
 ## The two methods in one minute
 
@@ -95,20 +97,23 @@ so its paths wander around before reaching the data.
 
 ### Quality vs. number of sampling steps
 
-![Quality vs steps](assets/comparison_quality_vs_steps.png)
+![Quality vs steps](assets/comparison_quality_vs_steps_seeds.png)
 
 Quality is measured with the **energy distance** between 2000 generated and 2000 real points
 (lower is better; the dotted line is real vs. real, the best achievable with this sample size).
 **DDIM** uses the *same trained DDPM model* with a deterministic sampler that can skip timesteps,
 so DDPM and Flow Matching can be compared at an equal number of steps.
+Every model is trained with **3 different seeds**; values are mean ± standard deviation.
 
 | Steps | Moons (FM / DDIM) | Spirals (FM / DDIM) | Checkerboard (FM / DDIM) |
 |---|---|---|---|
-| 5 | **0.0267** / 0.1108 | **0.0250** / 0.1031 | **0.0353** / 0.0927 |
-| 10 | **0.0077** / 0.0181 | **0.0066** / 0.0178 | **0.0109** / 0.0211 |
-| 20 | **0.0036** / 0.0051 | **0.0029** / 0.0051 | **0.0043** / 0.0070 |
-| 100 | **0.0022** / 0.0027 | **0.0022** / 0.0029 | **0.0016** / 0.0022 |
-| DDPM (1000) | 0.0014 | 0.0043 | 0.0018 |
+| 5 | **0.0232 ± 0.0026** / 0.1009 ± 0.0087 | **0.0243 ± 0.0015** / 0.1057 ± 0.0033 | **0.0349 ± 0.0021** / 0.0965 ± 0.0086 |
+| 10 | **0.0055 ± 0.0017** / 0.0152 ± 0.0027 | **0.0068 ± 0.0007** / 0.0187 ± 0.0020 | **0.0117 ± 0.0015** / 0.0224 ± 0.0032 |
+| 20 | 0.0022 ± 0.0011 / 0.0032 ± 0.0015 | **0.0037 ± 0.0007** / 0.0057 ± 0.0006 | 0.0057 ± 0.0016 / 0.0080 ± 0.0014 |
+| 100 | 0.0015 ± 0.0006 / 0.0018 ± 0.0008 | 0.0032 ± 0.0007 / 0.0036 ± 0.0005 | 0.0033 ± 0.0014 / 0.0036 ± 0.0014 |
+| DDPM (1000) | 0.0019 ± 0.0012 | 0.0039 ± 0.0007 | 0.0029 ± 0.0017 |
+
+Bold marks a difference larger than the seed-to-seed variation (non-overlapping mean ± std).
 
 ### Sampling time
 
@@ -120,14 +125,13 @@ so DDPM and Flow Matching can be compared at an equal number of steps.
 
 ### Takeaways
 
-- At an equal number of steps, **Flow Matching beats DDIM on all three datasets**. The gap is
-  largest with few steps (~3-4x at 5 steps) and shrinks as steps increase: Flow Matching learns
-  straighter paths, which the Euler solver follows well even with large steps.
-- On spirals, **deterministic DDIM (50 steps) beats stochastic DDPM (1000 steps)** with the *same*
-  model, so DDPM's weakness there comes from its noisy sampler, not from the network.
-- On moons, full DDPM sampling (1000 steps) is still the best result overall.
-
-These are single-seed results with a small network.
+- **At an equal number of steps, Flow Matching beats DDIM, and the gap is largest with few steps**
+  (~4x at 5 steps, ~2-3x at 10). Flow Matching learns straighter paths, which the Euler solver
+  follows well even with large steps.
+- **With ≥ 50 steps, all three samplers (Flow Matching, DDIM and full DDPM) are equivalent**
+  within the seed-to-seed variation.
+- **Lesson learned:** with a single seed, it looked like DDPM was best on moons and worst on spirals.
+  Repeating with 3 seeds showed both differences were noise. Error bars matter.
 
 ## Quickstart
 
@@ -146,6 +150,7 @@ Then open the notebooks in `notebooks/` in order:
 | `03_toy_datasets.ipynb` | Spirals and checkerboard, and the improved network |
 | `04_ddpm.ipynb` | DDPM noise schedule, training and sampling |
 | `05_comparison.ipynb` | Fair DDPM / DDIM vs Flow Matching comparison, metrics and timings |
+| `06_seeds.ipynb` | Same comparison over 3 seeds, with error bars |
 
 ## Project structure
 
@@ -171,7 +176,7 @@ assets/               # figures and GIFs used in this README
 - [x] DDPM from scratch
 - [x] DDPM vs Flow Matching comparison on 2D data
 - [x] DDIM sampler (DDPM with fewer steps)
-- [ ] Repeat the comparison with several seeds (error bars)
+- [x] Repeat the comparison with several seeds (error bars)
 - [ ] U-Net on MNIST / Fashion-MNIST
 - [ ] FID vs number of steps on images
 - [ ] Tests and CI
