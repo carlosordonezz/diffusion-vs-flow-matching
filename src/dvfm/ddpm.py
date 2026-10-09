@@ -42,3 +42,36 @@ def ddpm_loss(model: nn.Module, schedule: DDPMSchedule, x0: torch.Tensor) -> tor
     # 4. Mean squared error between predicted and real noise
     pred = model(xt, t_input)
     return ((pred - noise) ** 2).mean()
+
+
+
+@torch.no_grad()
+def ddpm_sample(
+    model: nn.Module, schedule: DDPMSchedule, n: int, return_trajectory: bool = False
+) -> torch.Tensor | tuple[torch.Tensor, list[torch.Tensor]]:
+    """Ancestral sampling (Algorithm 2 in Ho et al.): from pure noise at t=T-1 down to t=0."""
+    x = torch.randn(n, 2)  # start from pure noise
+    trajectory = [x.clone()]
+
+    for t in reversed(range(schedule.num_timesteps)):  # 999, 998, ..., 0
+        t_input = torch.full((n,), t / schedule.num_timesteps)
+        eps_pred = model(x, t_input)  # predicted noise
+
+        alpha = schedule.alphas[t]
+        alpha_bar = schedule.alpha_bars[t]
+        beta = schedule.betas[t]
+
+        # Remove a bit of the predicted noise -> mean of x_{t-1}
+        mean = (x - beta / torch.sqrt(1 - alpha_bar) * eps_pred) / torch.sqrt(alpha)
+
+        # Add fresh noise, except at the very last step
+        if t > 0:
+            x = mean + torch.sqrt(beta) * torch.randn_like(x)
+        else:
+            x = mean
+
+        trajectory.append(x.clone())
+
+    if return_trajectory:
+        return x, trajectory
+    return x
