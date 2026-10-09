@@ -1,2 +1,74 @@
-# diffusion-vs-flow-matching
-DDPM and Flow Matching implemented from scratch in PyTorch, compared side by side.
+<p align="center">
+  <img src="assets/fm_moons.gif" width="380" alt="Flow matching turning noise into two moons">
+</p>
+
+<h1 align="center">Diffusion vs Flow Matching</h1>
+
+<p align="center">
+  <b>DDPM and Flow Matching implemented from scratch in PyTorch, compared side by side.</b>
+</p>
+
+> 🚧 Work in progress — see the [roadmap](#roadmap).
+
+## Flow Matching in one minute
+
+Take a noise sample $x_0 \sim \mathcal{N}(0, I)$ and a data sample $x_1$, and join them with a straight line:
+
+$$
+x_t = (1 - t)\,x_0 + t\,x_1, \qquad t \in [0, 1]
+$$
+
+A neural network $v_\theta(x_t, t)$ learns to predict the velocity along that line, $x_1 - x_0$:
+
+$$
+\mathcal{L} = \mathbb{E}\,\big\| (x_1 - x_0) - v_\theta(x_t, t) \big\|^2
+$$
+
+To generate new data, start from noise and follow the learned velocity from $t = 0$ to $t = 1$ (Euler method).
+
+## Results so far
+
+### How many sampling steps are needed?
+
+![Sampling steps comparison](assets/fm_steps_comparison.png)
+
+- **1 step**: all points collapse to the center. At $t = 0$ the input is pure noise, so the best the network can predict is the *average* velocity, which sends every point to the mean of the data.
+- **20 steps**: already almost identical to 100.
+
+### Trajectories from noise to data
+
+<img src="assets/fm_moons_paths.png" width="420" alt="Flow matching trajectories">
+
+The learned paths are smooth and nearly straight, which is why few steps are enough.
+
+## Quickstart
+
+```bash
+git clone https://github.com/carlosordonezz/diffusion-vs-flow-matching.git
+cd diffusion-vs-flow-matching
+uv sync
+```
+
+Then open the notebooks in `notebooks/` in order.
+
+## Roadmap
+
+- [x] Two-moons dataset
+- [x] Flow Matching: loss, training and Euler sampler
+- [x] Sampling steps comparison and trajectory GIF
+- [x] Spirals and checkerboard datasets
+- [ ] Better network (sinusoidal time embedding) so spirals are learned
+- [ ] DDPM from scratch
+- [ ] DDPM vs Flow Matching comparison on 2D data
+- [ ] U-Net on MNIST / Fashion-MNIST
+- [ ] FID vs number of steps
+- [ ] Tests and CI
+
+## References
+
+- Lipman et al. *Flow Matching for Generative Modeling.* ICLR 2023. [arXiv:2210.02747](https://arxiv.org/abs/2210.02747)
+- Ho et al. *Denoising Diffusion Probabilistic Models.* NeurIPS 2020. [arXiv:2006.11239](https://arxiv.org/abs/2006.11239)
+
+## License
+
+[MIT](LICENSE)
