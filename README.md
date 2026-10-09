@@ -12,11 +12,12 @@
 
 ## TL;DR
 
-With the same network and training budget (results over 3 seeds):
+With the same network and training budget (2D results over 3 seeds):
 
 - **With few sampling steps, Flow Matching is clearly better than DDIM**: ~4x lower error at 5 steps and ~2-3x at 10 steps, on all three datasets.
 - **With many steps (≥ 50), Flow Matching, DDIM and full DDPM (1000 steps) are statistically indistinguishable.**
 - So the advantage of Flow Matching is **efficiency**: e.g. with 20 steps it is **42x faster** than DDPM sampling, at comparable quality on moons and spirals.
+- The same code scales to images: a small U-Net trained with Flow Matching **generates recognizable MNIST digits with only 5 sampling steps**.
 
 ## The two methods in one minute
 
@@ -57,16 +58,16 @@ To generate new data, start from pure noise and remove a bit of the predicted no
 
 ![DDPM forward process](assets/ddpm_forward_process.png)
 
-## Flow Matching results
+## Part 1 — 2D toy data
 
-### How many sampling steps are needed?
+### Flow Matching: how many sampling steps are needed?
 
 ![Sampling steps comparison](assets/fm_steps_comparison.png)
 
 - **1 step**: all points collapse to the center. At $t = 0$ the input is pure noise, so the best the network can predict is the *average* velocity, which sends every point to the mean of the data.
 - **20 steps**: already almost identical to 100.
 
-### Trajectories from noise to data
+### Flow Matching: trajectories from noise to data
 
 <img src="assets/fm_moons_paths.png" width="420" alt="Flow matching trajectories">
 
@@ -80,22 +81,22 @@ Feeding time as a sinusoidal embedding (instead of a single number) lets the net
 learn the outer turns of the spirals. The inner turns and the sharp checkerboard edges
 still need a bigger network and longer training.
 
-## DDPM vs Flow Matching
+### DDPM vs Flow Matching
 
 Both methods use **the same network, data, training steps, learning rate and seed** — only the method changes.
 
-### Samples
+#### Samples
 
 ![Samples comparison](assets/comparison_samples.png)
 
-### Trajectories (same starting noise)
+#### Trajectories (same starting noise)
 
 ![Trajectories comparison](assets/comparison_trajectories.png)
 
 Flow Matching moves each point along a short, smooth path. DDPM adds fresh noise at every step,
 so its paths wander around before reaching the data.
 
-### Quality vs. number of sampling steps
+#### Quality vs. number of sampling steps
 
 ![Quality vs steps](assets/comparison_quality_vs_steps_seeds.png)
 
@@ -115,7 +116,7 @@ Every model is trained with **3 different seeds**; values are mean ± standard d
 
 Bold marks a difference larger than the seed-to-seed variation (non-overlapping mean ± std).
 
-### Sampling time
+#### Sampling time
 
 | Method | Time for 2000 samples (CPU) | Speed-up vs DDPM |
 |---|---|---|
@@ -123,7 +124,7 @@ Bold marks a difference larger than the seed-to-seed variation (non-overlapping 
 | Flow Matching, 100 steps | 0.359 s | 8x |
 | DDPM, 1000 steps | 3.027 s | 1x |
 
-### Takeaways
+#### Takeaways
 
 - **At an equal number of steps, Flow Matching beats DDIM, and the gap is largest with few steps**
   (~4x at 5 steps, ~2-3x at 10). Flow Matching learns straighter paths, which the Euler solver
@@ -132,6 +133,27 @@ Bold marks a difference larger than the seed-to-seed variation (non-overlapping 
   within the seed-to-seed variation.
 - **Lesson learned:** with a single seed, it looked like DDPM was best on moons and worst on spirals.
   Repeating with 3 seeds showed both differences were noise. Error bars matter.
+
+## Part 2 — Images (MNIST)
+
+The same loss functions and samplers are reused, unchanged: only the network and the data shape change.
+Images are scaled to $[-1, 1]$ and the model is a small **time-conditioned U-Net**
+(2.77M parameters, resolutions 28 → 14 → 7 → 14 → 28, with skip connections and the time
+embedding injected into every residual block).
+
+Training: 10,000 steps, batch size 128, learning rate 2e-4 with cosine decay, on a free Colab T4 GPU.
+
+### Flow Matching samples (100 steps)
+
+<img src="assets/fm_mnist_samples.png" width="400" alt="Flow Matching samples on MNIST">
+
+### Flow Matching: same noise, different number of steps
+
+![Flow Matching MNIST steps](assets/fm_mnist_steps.png)
+
+- **1 step**: a blurry "average digit", the same collapse to the mean seen in 2D.
+- **5 steps**: digits are already recognizable.
+- **10-100 steps**: almost identical.
 
 ## Quickstart
 
@@ -151,14 +173,15 @@ Then open the notebooks in `notebooks/` in order:
 | `04_ddpm.ipynb` | DDPM noise schedule, training and sampling |
 | `05_comparison.ipynb` | Fair DDPM / DDIM vs Flow Matching comparison, metrics and timings |
 | `06_seeds.ipynb` | Same comparison over 3 seeds, with error bars |
+| `07_mnist.ipynb` | U-Net on MNIST (run on Google Colab with a GPU) |
 
 ## Project structure
 
 ```
 src/dvfm/
-├── data.py           # 2D toy datasets: moons, spirals, checkerboard
-├── models.py         # time-conditioned MLPs (plain and with sinusoidal time embedding)
-├── flow_matching.py  # Flow Matching loss and Euler sampler
+├── data.py           # 2D toy datasets (moons, spirals, checkerboard) and MNIST loader
+├── models.py         # time-conditioned MLPs and U-Net
+├── flow_matching.py  # Flow Matching loss and Euler sampler (any data shape, CPU/GPU)
 ├── ddpm.py           # DDPM noise schedule, loss, ancestral and DDIM samplers
 ├── train.py          # generic training loop
 └── metrics.py        # energy distance
@@ -177,7 +200,8 @@ assets/               # figures and GIFs used in this README
 - [x] DDPM vs Flow Matching comparison on 2D data
 - [x] DDIM sampler (DDPM with fewer steps)
 - [x] Repeat the comparison with several seeds (error bars)
-- [ ] U-Net on MNIST / Fashion-MNIST
+- [x] U-Net + Flow Matching on MNIST
+- [ ] DDPM / DDIM on MNIST and visual comparison
 - [ ] FID vs number of steps on images
 - [ ] Tests and CI
 
@@ -187,6 +211,7 @@ assets/               # figures and GIFs used in this README
 - Liu et al. *Flow Straight and Fast: Learning to Generate and Transfer Data with Rectified Flow.* ICLR 2023. [arXiv:2209.03003](https://arxiv.org/abs/2209.03003)
 - Ho et al. *Denoising Diffusion Probabilistic Models.* NeurIPS 2020. [arXiv:2006.11239](https://arxiv.org/abs/2006.11239)
 - Song et al. *Denoising Diffusion Implicit Models.* ICLR 2021. [arXiv:2010.02502](https://arxiv.org/abs/2010.02502)
+- Ronneberger et al. *U-Net: Convolutional Networks for Biomedical Image Segmentation.* MICCAI 2015. [arXiv:1505.04597](https://arxiv.org/abs/1505.04597)
 - Székely & Rizzo. *Energy statistics: A class of statistics based on distances.* Journal of Statistical Planning and Inference, 2013.
 
 ## License
