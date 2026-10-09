@@ -65,3 +65,16 @@ def sample_checkerboard(n: int, seed: int | None = None) -> torch.Tensor:
     x2 = x2 + (torch.floor(x1) % 2)  # shift every other column -> checkerboard
 
     return torch.stack([x1, x2], dim=1)
+
+
+
+def load_mnist(root: str = "data", dataset: str = "mnist", train: bool = True) -> torch.Tensor:
+    """MNIST or Fashion-MNIST as a tensor of shape (N, 1, 28, 28) with values in [-1, 1]."""
+    from torchvision import datasets
+
+    cls = {"mnist": datasets.MNIST, "fashion_mnist": datasets.FashionMNIST}[dataset]
+    ds = cls(root=root, train=train, download=True)
+
+    x = ds.data.float() / 255.0  # (N, 28, 28), pixel values in [0, 1]
+    x = x * 2 - 1                # -> [-1, 1]
+    return x.unsqueeze(1)        # add the channel dimension -> (N, 1, 28, 28)

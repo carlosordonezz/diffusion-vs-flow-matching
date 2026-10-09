@@ -221,3 +221,6 @@ __marimo__/
 
 # Trained models
 checkpoints/
+
+# Downloaded datasets
+data/
