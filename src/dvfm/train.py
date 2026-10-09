@@ -1,21 +1,26 @@
+from collections.abc import Callable
+
 import torch
 from torch import nn
 
 from dvfm.flow_matching import flow_matching_loss
 
+LossFn = Callable[[nn.Module, torch.Tensor], torch.Tensor]
 
-def train_flow_matching(
+
+def train_model(
     model: nn.Module,
     data: torch.Tensor,
+    loss_fn: LossFn,
     num_steps: int = 5000,
     batch_size: int = 512,
     lr: float = 1e-3,
     log_every: int = 1000,
     cosine_schedule: bool = False,
 ) -> list[float]:
-    """Train a model with flow matching on data of shape (N, 2). Returns the loss history."""
+    """Generic training loop. `loss_fn(model, batch)` must return a scalar loss."""
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    scheduler = (  # NEW: lr goes smoothly from `lr` to 0 over training
+    scheduler = (
         torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, num_steps) if cosine_schedule else None
     )
     losses = []
@@ -23,12 +28,12 @@ def train_flow_matching(
     model.train()
     for step in range(num_steps):
         idx = torch.randint(0, len(data), (batch_size,))
-        loss = flow_matching_loss(model, data[idx])
+        loss = loss_fn(model, data[idx])
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        if scheduler is not None: 
+        if scheduler is not None:
             scheduler.step()
 
         losses.append(loss.item())
@@ -37,3 +42,8 @@ def train_flow_matching(
 
     model.eval()
     return losses
+
+
+def train_flow_matching(model: nn.Module, data: torch.Tensor, **kwargs) -> list[float]:
+    """Shortcut so the earlier notebooks keep working."""
+    return train_model(model, data, flow_matching_loss, **kwargs)

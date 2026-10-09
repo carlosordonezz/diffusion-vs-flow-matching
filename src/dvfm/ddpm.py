@@ -1,5 +1,5 @@
 import torch
-
+from torch import nn
 
 class DDPMSchedule:
     """Linear noise schedule from Ho et al. (2020).
@@ -25,3 +25,20 @@ def q_sample(
     """
     alpha_bar = schedule.alpha_bars[t].view(-1, 1)  # (B,) -> (B, 1)
     return alpha_bar.sqrt() * x0 + (1 - alpha_bar).sqrt() * noise
+
+
+def ddpm_loss(model: nn.Module, schedule: DDPMSchedule, x0: torch.Tensor) -> torch.Tensor:
+    """Simplified DDPM loss: the network predicts the noise that was added to x0."""
+    # 1. A random integer timestep for each point
+    t = torch.randint(0, schedule.num_timesteps, (x0.shape[0],), device=x0.device)
+
+    # 2. Noise and the noisy data
+    noise = torch.randn_like(x0)
+    xt = q_sample(schedule, x0, t, noise)
+
+    # 3. The network gets t scaled to [0, 1), like in flow matching
+    t_input = t.float() / schedule.num_timesteps
+
+    # 4. Mean squared error between predicted and real noise
+    pred = model(xt, t_input)
+    return ((pred - noise) ** 2).mean()
