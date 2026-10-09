@@ -20,3 +20,16 @@ def flow_matching_loss(model: nn.Module, x1: torch.Tensor) -> torch.Tensor:
     # 5. Mean squared error between prediction and target
     pred = model(xt, t)
     return ((pred - target) ** 2).mean()
+
+
+@torch.no_grad()
+def sample(model: nn.Module, n: int, num_steps: int = 100) -> torch.Tensor:
+    """Generate n points by following the learned velocity from noise (t=0) to data (t=1)."""
+    x = torch.randn(n, 2)  # start from pure noise
+    dt = 1.0 / num_steps
+
+    for i in range(num_steps):
+        t = torch.full((n,), i * dt)  # same time for every point
+        x = x + dt * model(x, t)      # one Euler step
+
+    return x
