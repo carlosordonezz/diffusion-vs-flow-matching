@@ -75,3 +75,45 @@ def ddpm_sample(
     if return_trajectory:
         return x, trajectory
     return x
+
+
+@torch.no_grad()
+def ddim_sample(
+    model: nn.Module,
+    schedule: DDPMSchedule,
+    n: int,
+    num_steps: int = 50,
+    return_trajectory: bool = False,
+    clip: float = 3.0,
+) -> torch.Tensor | tuple[torch.Tensor, list[torch.Tensor]]:
+    """Deterministic DDIM sampling (Song et al., 2021) with a DDPM-trained model.
+
+    Uses only `num_steps` timesteps, evenly spaced between T-1 and 0.
+    """
+    T = schedule.num_timesteps
+    timesteps = torch.linspace(T - 1, 0, num_steps).long().tolist()  # e.g. [999, 946, ..., 0]
+
+    x = torch.randn(n, 2)  # start from pure noise
+    trajectory = [x.clone()]
+
+    for i, t in enumerate(timesteps):
+        t_prev = timesteps[i + 1] if i + 1 < len(timesteps) else -1  # -1 means "clean data"
+
+        t_input = torch.full((n,), t / T)
+        eps_pred = model(x, t_input)
+
+        alpha_bar = schedule.alpha_bars[t]
+        alpha_bar_prev = schedule.alpha_bars[t_prev] if t_prev >= 0 else torch.tensor(1.0)
+
+        # 1. Estimate the clean data from the predicted noise
+        x0_pred = (x - torch.sqrt(1 - alpha_bar) * eps_pred) / torch.sqrt(alpha_bar)
+        x0_pred = x0_pred.clamp(-clip, clip)
+
+        # 2. Jump to t_prev using that estimate and the same predicted noise (no fresh noise)
+        x = torch.sqrt(alpha_bar_prev) * x0_pred + torch.sqrt(1 - alpha_bar_prev) * eps_pred
+
+        trajectory.append(x.clone())
+
+    if return_trajectory:
+        return x, trajectory
+    return x
