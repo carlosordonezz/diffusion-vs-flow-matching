@@ -41,6 +41,14 @@ To generate new data, start from noise and follow the learned velocity from $t =
 
 The learned paths are smooth and nearly straight, which is why few steps are enough.
 
+### Improving the network
+
+![Before and after](assets/fm_before_after.png)
+
+Feeding time as a sinusoidal embedding (instead of a single number) lets the network
+learn the outer turns of the spirals. The inner turns and the sharp checkerboard edges
+still need a bigger network and longer training.
+
 ## Quickstart
 
 ```bash
@@ -57,7 +65,7 @@ Then open the notebooks in `notebooks/` in order.
 - [x] Flow Matching: loss, training and Euler sampler
 - [x] Sampling steps comparison and trajectory GIF
 - [x] Spirals and checkerboard datasets
-- [ ] Better network (sinusoidal time embedding) so spirals are learned
+- [x] Better network (sinusoidal time embedding) — spirals improved, needs more capacity/GPU for the inner turns
 - [ ] DDPM from scratch
 - [ ] DDPM vs Flow Matching comparison on 2D data
 - [ ] U-Net on MNIST / Fashion-MNIST
