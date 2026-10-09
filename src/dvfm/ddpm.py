@@ -1,5 +1,10 @@
+import math
+
 import torch
 from torch import nn
+
+from dvfm.flow_matching import expand_like
+
 
 class DDPMSchedule:
     """Linear noise schedule from Ho et al. (2020).
@@ -23,54 +28,52 @@ def q_sample(
 
     x_t = sqrt(alpha_bar_t) * x0 + sqrt(1 - alpha_bar_t) * noise
     """
-    alpha_bar = schedule.alpha_bars[t].view(-1, 1)  # (B,) -> (B, 1)
+    alpha_bar = schedule.alpha_bars.to(x0.device)[t]  # move the schedule to x0's device
+    alpha_bar = expand_like(alpha_bar, x0)
     return alpha_bar.sqrt() * x0 + (1 - alpha_bar).sqrt() * noise
 
 
 def ddpm_loss(model: nn.Module, schedule: DDPMSchedule, x0: torch.Tensor) -> torch.Tensor:
     """Simplified DDPM loss: the network predicts the noise that was added to x0."""
-    # 1. A random integer timestep for each point
     t = torch.randint(0, schedule.num_timesteps, (x0.shape[0],), device=x0.device)
-
-    # 2. Noise and the noisy data
     noise = torch.randn_like(x0)
     xt = q_sample(schedule, x0, t, noise)
 
-    # 3. The network gets t scaled to [0, 1), like in flow matching
-    t_input = t.float() / schedule.num_timesteps
-
-    # 4. Mean squared error between predicted and real noise
+    t_input = t.float() / schedule.num_timesteps  # scale to [0, 1) for the network
     pred = model(xt, t_input)
     return ((pred - noise) ** 2).mean()
 
 
-
 @torch.no_grad()
 def ddpm_sample(
-    model: nn.Module, schedule: DDPMSchedule, n: int, return_trajectory: bool = False
+    model: nn.Module,
+    schedule: DDPMSchedule,
+    n: int,
+    return_trajectory: bool = False,
+    shape: tuple[int, ...] = (2,),
+    device: torch.device | str = "cpu",
 ) -> torch.Tensor | tuple[torch.Tensor, list[torch.Tensor]]:
     """Ancestral sampling (Algorithm 2 in Ho et al.): from pure noise at t=T-1 down to t=0."""
-    x = torch.randn(n, 2)  # start from pure noise
-    trajectory = [x.clone()]
+    T = schedule.num_timesteps
+    x = torch.randn(n, *shape, device=device)
+    trajectory = [x.cpu()]
 
-    for t in reversed(range(schedule.num_timesteps)):  # 999, 998, ..., 0
-        t_input = torch.full((n,), t / schedule.num_timesteps)
-        eps_pred = model(x, t_input)  # predicted noise
+    for t in reversed(range(T)):  # 999, 998, ..., 0
+        t_input = torch.full((n,), t / T, device=device)
+        eps_pred = model(x, t_input)
 
-        alpha = schedule.alphas[t]
-        alpha_bar = schedule.alpha_bars[t]
-        beta = schedule.betas[t]
+        # Plain Python floats: no device issues
+        alpha = schedule.alphas[t].item()
+        alpha_bar = schedule.alpha_bars[t].item()
+        beta = schedule.betas[t].item()
 
-        # Remove a bit of the predicted noise -> mean of x_{t-1}
-        mean = (x - beta / torch.sqrt(1 - alpha_bar) * eps_pred) / torch.sqrt(alpha)
-
-        # Add fresh noise, except at the very last step
+        mean = (x - beta / math.sqrt(1 - alpha_bar) * eps_pred) / math.sqrt(alpha)
         if t > 0:
-            x = mean + torch.sqrt(beta) * torch.randn_like(x)
+            x = mean + math.sqrt(beta) * torch.randn_like(x)
         else:
             x = mean
 
-        trajectory.append(x.clone())
+        trajectory.append(x.cpu())
 
     if return_trajectory:
         return x, trajectory
@@ -85,34 +88,37 @@ def ddim_sample(
     num_steps: int = 50,
     return_trajectory: bool = False,
     clip: float = 3.0,
+    shape: tuple[int, ...] = (2,),
+    device: torch.device | str = "cpu",
 ) -> torch.Tensor | tuple[torch.Tensor, list[torch.Tensor]]:
     """Deterministic DDIM sampling (Song et al., 2021) with a DDPM-trained model.
 
     Uses only `num_steps` timesteps, evenly spaced between T-1 and 0.
+    Use clip=3.0 for the 2D datasets and clip=1.0 for images in [-1, 1].
     """
     T = schedule.num_timesteps
-    timesteps = torch.linspace(T - 1, 0, num_steps).long().tolist()  # e.g. [999, 946, ..., 0]
+    timesteps = torch.linspace(T - 1, 0, num_steps).long().tolist()
 
-    x = torch.randn(n, 2)  # start from pure noise
-    trajectory = [x.clone()]
+    x = torch.randn(n, *shape, device=device)
+    trajectory = [x.cpu()]
 
     for i, t in enumerate(timesteps):
         t_prev = timesteps[i + 1] if i + 1 < len(timesteps) else -1  # -1 means "clean data"
 
-        t_input = torch.full((n,), t / T)
+        t_input = torch.full((n,), t / T, device=device)
         eps_pred = model(x, t_input)
 
-        alpha_bar = schedule.alpha_bars[t]
-        alpha_bar_prev = schedule.alpha_bars[t_prev] if t_prev >= 0 else torch.tensor(1.0)
+        alpha_bar = schedule.alpha_bars[t].item()
+        alpha_bar_prev = schedule.alpha_bars[t_prev].item() if t_prev >= 0 else 1.0
 
         # 1. Estimate the clean data from the predicted noise
-        x0_pred = (x - torch.sqrt(1 - alpha_bar) * eps_pred) / torch.sqrt(alpha_bar)
+        x0_pred = (x - math.sqrt(1 - alpha_bar) * eps_pred) / math.sqrt(alpha_bar)
         x0_pred = x0_pred.clamp(-clip, clip)
 
-        # 2. Jump to t_prev using that estimate and the same predicted noise (no fresh noise)
-        x = torch.sqrt(alpha_bar_prev) * x0_pred + torch.sqrt(1 - alpha_bar_prev) * eps_pred
+        # 2. Jump to t_prev using that estimate and the same predicted noise
+        x = math.sqrt(alpha_bar_prev) * x0_pred + math.sqrt(1 - alpha_bar_prev) * eps_pred
 
-        trajectory.append(x.clone())
+        trajectory.append(x.cpu())
 
     if return_trajectory:
         return x, trajectory
