@@ -23,13 +23,23 @@ def flow_matching_loss(model: nn.Module, x1: torch.Tensor) -> torch.Tensor:
 
 
 @torch.no_grad()
-def sample(model: nn.Module, n: int, num_steps: int = 100) -> torch.Tensor:
-    """Generate n points by following the learned velocity from noise (t=0) to data (t=1)."""
+def sample(
+    model: nn.Module, n: int, num_steps: int = 100, return_trajectory: bool = False
+) -> torch.Tensor | tuple[torch.Tensor, list[torch.Tensor]]:
+    """Generate n points by following the learned velocity from noise (t=0) to data (t=1).
+
+    If return_trajectory is True, also return the list of intermediate states
+    (num_steps + 1 tensors of shape (n, 2), from pure noise to the final samples).
+    """
     x = torch.randn(n, 2)  # start from pure noise
     dt = 1.0 / num_steps
+    trajectory = [x.clone()]
 
     for i in range(num_steps):
         t = torch.full((n,), i * dt)  # same time for every point
         x = x + dt * model(x, t)      # one Euler step
+        trajectory.append(x.clone())
 
+    if return_trajectory:
+        return x, trajectory
     return x
